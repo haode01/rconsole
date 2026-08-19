@@ -1,0 +1,20 @@
+{
+  "name": "rconsole",
+  "version": "1.0.0",
+  "description": "Cross-platform remote console server (telnet/nc -> free shell + preset services). Server side only; the operator connects with a plain telnet/nc client.",
+  "main": "src/server.js",
+  "bin": {
+    "rconsole": "bin/rconsole.js"
+  },
+  "scripts": {
+    "start": "node bin/rconsole.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "node-pty": "^1.0.0"
+  }
+}

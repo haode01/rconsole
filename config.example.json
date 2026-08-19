@@ -1,0 +1,52 @@
+{
+  "listeners": [
+    { "name": "shell",   "mode": "shell",   "host": "0.0.0.0", "port": 9000 },
+    { "name": "exec",    "mode": "exec",    "host": "0.0.0.0", "port": 9001 },
+    { "name": "service", "mode": "service", "host": "0.0.0.0", "port": 9002 }
+  ],
+  "shell": {
+    "windows": "cmd.exe",
+    "windowsArgs": [],
+    "linux": "bash",
+    "linuxArgs": [],
+    "env": {},
+    "cwd": null,
+    "cols": 80,
+    "rows": 24,
+    "codepageUtf8": true,
+    "idleTimeoutSeconds": 0,
+    "maxSessions": 0
+  },
+  "exec": {
+    "maxInputBytes": 65536,
+    "timeoutSeconds": 0,
+    "windowsHide": true
+  },
+  "services": [
+    {
+      "name": "status",
+      "description": "Show system info",
+      "command": "systeminfo",
+      "args": { "min": 0, "max": 0 },
+      "timeoutSeconds": 10,
+      "hidden": false
+    },
+    {
+      "name": "echo",
+      "description": "Echo back the arguments you pass",
+      "command": "echo {args}",
+      "args": { "min": 0, "max": 16 },
+      "hidden": false
+    },
+    {
+      "name": "serial",
+      "description": "Open the COM3 serial console (Windows: python serial.tools.miniterm)",
+      "command": "python -m serial.tools.miniterm COM3 115200",
+      "args": { "min": 0, "max": 0 },
+      "hidden": false
+    }
+  ],
+  "banner": "rconsole: connected to {hostname}\r\n",
+  "auth": { "enabled": false, "token": null },
+  "log": { "file": null, "level": "info" }
+}
