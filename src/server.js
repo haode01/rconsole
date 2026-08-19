@@ -4,7 +4,7 @@ const net = require('net');
 const fs = require('fs');
 const crypto = require('crypto');
 const { TelnetFilter } = require('./telnet');
-const { ShellSession } = require('./session');
+const { ShellSession, PtyBridge } = require('./session');
 const { ServiceRegistry, spawnSpec } = require('./services');
 const { resolveExecCommand, renderBanner } = require('./config');
 
@@ -61,31 +61,37 @@ function authenticate(socket, filter, config) {
   });
 }
 
-/** Collect clean (post-filter) input until a newline (service) or EOF (exec). */
+/** Collect clean (post-filter) input until a newline (line mode) or EOF (exec).
+ *  Resolves { data, leftover } — leftover holds bytes after the first newline. */
 function collectInput(filter, socket, maxBytes, untilEof) {
   return new Promise((resolve) => {
     let buf = Buffer.alloc(0);
     let done = false;
-    const finish = () => {
+    const finish = (data, leftover) => {
       if (done) return;
       done = true;
       filter.removeListener('data', onData);
-      socket.removeListener('end', finish);
-      socket.removeListener('close', finish);
-      socket.removeListener('error', finish);
-      resolve(buf);
+      socket.removeListener('end', onEof);
+      socket.removeListener('close', onEof);
+      socket.removeListener('error', onEof);
+      resolve({ data, leftover });
     };
+    const onEof = () => finish(buf, Buffer.alloc(0));
     const onData = (d) => {
       buf = Buffer.concat([buf, d]);
       if (!untilEof) {
-        if (buf.indexOf(0x0a) >= 0) finish();
+        const nl = buf.indexOf(0x0a);
+        if (nl >= 0) {
+          finish(buf.slice(0, nl), buf.slice(nl + 1));
+          return;
+        }
       }
-      if (buf.length >= maxBytes) finish();
+      if (buf.length >= maxBytes) finish(buf, Buffer.alloc(0));
     };
     filter.on('data', onData);
-    socket.once('end', finish);
-    socket.once('close', finish);
-    socket.once('error', finish);
+    socket.once('end', onEof);
+    socket.once('close', onEof);
+    socket.once('error', onEof);
   });
 }
 
@@ -201,10 +207,10 @@ class RConsoleServer {
   async _handleExec(socket, filter, send) {
     const cfg = this.config;
     const maxBytes = cfg.exec.maxInputBytes || 65536;
-    const raw = await collectInput(filter, socket, maxBytes, true);
+    const { data } = await collectInput(filter, socket, maxBytes, true);
     if (this._closing || socket.destroyed) return;
 
-    const input = raw.toString('utf8').trim();
+    const input = data.toString('utf8').trim();
     if (input) {
       const spec = resolveExecCommand(cfg, input);
       await spawnSpec(spec, cfg.exec.timeoutSeconds || 0, cfg.exec.windowsHide, send);
@@ -215,14 +221,65 @@ class RConsoleServer {
   async _handleService(socket, filter, send) {
     const cfg = this.config;
     const maxBytes = cfg.exec.maxInputBytes || 65536;
-    const raw = await collectInput(filter, socket, maxBytes, false);
+    const { data, leftover } = await collectInput(filter, socket, maxBytes, false);
     if (this._closing || socket.destroyed) return;
 
-    const line = raw.toString('utf8').trim();
-    if (line) {
-      const { code } = await this.services.run(line, send);
-      send(Buffer.from(`\r\n[exit: ${code}]\r\n`, 'utf8'));
+    const line = data.toString('utf8').trim();
+    if (!line) {
+      socket.end();
+      return;
     }
+
+    const r = this.services.resolve(line);
+    if (r.error) {
+      send(Buffer.from(`${r.error}\r\n`, 'utf8'));
+      socket.end();
+      return;
+    }
+    if (r.builtin === 'list') {
+      send(Buffer.from(this.services.helpText(), 'utf8'));
+      socket.end();
+      return;
+    }
+
+    // Interactive service: run it inside a real PTY (ConPTY/forkpty) so that
+    // ssh, serial consoles etc. get a TTY and can be used interactively.
+    if (r.service.pty) {
+      let spec;
+      try {
+        spec = this.services.buildSpawn(r.service, r.args);
+      } catch (err) {
+        send(Buffer.from(`${err.message}\r\n`, 'utf8'));
+        socket.end();
+        return;
+      }
+      const bridge = new PtyBridge({
+        socket,
+        filter,
+        log: this.log,
+        opts: {
+          cols: cfg.shell.cols,
+          rows: cfg.shell.rows,
+          env: { ...process.env, ...(cfg.shell.env || {}) },
+          cwd: cfg.shell.cwd || undefined,
+          onSocketEnd: 'kill',
+        },
+      });
+      try {
+        bridge.spawn(spec.file, spec.args);
+      } catch (err) {
+        this.log(`service pty spawn failed: ${err.message}`);
+        send(Buffer.from(`\r\nservice spawn failed: ${err.message}\r\n`, 'utf8'));
+        socket.end();
+        return;
+      }
+      // Bytes typed right after the service line must reach the PTY.
+      if (leftover && leftover.length) filter.handleData(leftover);
+      return;
+    }
+
+    const { code } = await this.services.execResolved(r, send);
+    send(Buffer.from(`\r\n[exit: ${code}]\r\n`, 'utf8'));
     socket.end();
   }
 

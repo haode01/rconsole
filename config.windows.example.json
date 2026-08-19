@@ -88,17 +88,19 @@
     },
     {
       "name": "ssh",
-      "description": "SSH 到网络设备，用法: ssh <user@host>",
+      "description": "SSH 到网络设备（交互式），用法: ssh <user@host>",
       "command": "ssh {args}",
       "args": { "min": 1, "max": 16 },
-      "timeoutSeconds": 0
+      "timeoutSeconds": 0,
+      "pty": true
     },
     {
       "name": "serial",
-      "description": "打开 COM3 串口控制台（需安装 pyserial，波特率 115200）",
+      "description": "打开 COM3 串口控制台（交互式，需安装 pyserial，波特率 115200）",
       "command": "python -m serial.tools.miniterm COM3 115200",
       "args": { "min": 0, "max": 0 },
-      "timeoutSeconds": 0
+      "timeoutSeconds": 0,
+      "pty": true
     },
     {
       "name": "echo",

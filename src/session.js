@@ -8,46 +8,51 @@ const DEFAULT_COLS = 80;
 const DEFAULT_ROWS = 24;
 
 /**
- * Bridges one operator connection to a local PTY (the "free shell").
+ * Generic bidirectional bridge between one operator connection and a local
+ * PTY running an arbitrary command (shell, ssh, serial console, ...).
  *
- * - operator bytes (post telnet-filter)  -> pty stdin
+ * - operator bytes (post telnet-filter) -> pty stdin
  * - pty stdout                            -> operator socket
  * - NAWS window-size updates              -> pty.resize
- * - socket EOF (piped one-shot `echo|nc`) -> writes the shell exit command
- * - socket close/error or pty exit        -> clean up both sides
+ * - socket EOF/close/error, pty exit      -> clean up both sides
+ *
+ * opts:
+ *   name, cols, rows, env, cwd
+ *   onSocketEnd: 'exit' (write exitCommand on EOF), 'kill' (kill pty) or 'none'
+ *   exitCommand: string written to the pty when onSocketEnd === 'exit'
+ *   onActivity:  called whenever data flows either way (for idle timers)
  */
-class ShellSession {
-  constructor({ socket, filter, config, log }) {
+class PtyBridge {
+  constructor({ socket, filter, log, opts = {} }) {
     this.socket = socket;
     this.filter = filter;
-    this.config = config;
     this.log = log || (() => {});
     this.pty = null;
     this.closed = false;
-    this._exitCmd = process.platform === 'win32' ? 'exit\r\n' : 'exit\n';
     this._decoder = new StringDecoder('utf8');
-    this._idleTimer = null;
+    this._name = opts.name || 'xterm-256color';
+    this._cols = opts.cols || DEFAULT_COLS;
+    this._rows = opts.rows || DEFAULT_ROWS;
+    this._env = opts.env || process.env;
+    this._cwd = opts.cwd || undefined;
+    this._onSocketEnd = opts.onSocketEnd || 'exit';
+    this._exitCommand = opts.exitCommand || (process.platform === 'win32' ? 'exit\r\n' : 'exit\n');
+    this._onActivity = opts.onActivity || (() => {});
   }
 
-  start() {
-    const shell = resolveShell(this.config);
-    const opts = {
-      name: 'xterm-256color',
-      cols: this.config.shell.cols || DEFAULT_COLS,
-      rows: this.config.shell.rows || DEFAULT_ROWS,
-      env: { ...process.env, ...(this.config.shell.env || {}) },
+  spawn(file, args) {
+    const o = {
+      name: this._name,
+      cols: this._cols,
+      rows: this._rows,
+      env: this._env,
       useConpty: process.platform === 'win32',
     };
-    if (this.config.shell.cwd) opts.cwd = this.config.shell.cwd;
+    if (this._cwd) o.cwd = this._cwd;
 
-    this.pty = pty.spawn(shell.file, shell.args, opts);
-    this.log(`spawned shell pid=${this.pty.pid} file=${shell.file}`);
+    this.pty = pty.spawn(file, args, o);
+    this.log(`spawned pty pid=${this.pty.pid} file=${file}`);
     this._wire();
-
-    if (process.platform === 'win32' && this.config.shell.codepageUtf8) {
-      this.pty.write('chcp 65001 >NUL\r\n');
-    }
-    this._resetIdle();
     return this.pty;
   }
 
@@ -56,28 +61,30 @@ class ShellSession {
       if (this.closed || !this.pty) return;
       // Decoder handles multibyte characters split across TCP chunks.
       this.pty.write(this._decoder.write(buf));
-      this._resetIdle();
+      this._onActivity();
     });
 
     this.filter.on('resize', (cols, rows) => this.resize(cols, rows));
 
     this.pty.onData((data) => {
-      if (this.closed) return;
-      if (!this.socket.destroyed) this.socket.write(data);
-      this._resetIdle();
+      if (this.closed || this.socket.destroyed) return;
+      this.socket.write(data);
+      this._onActivity();
     });
 
     this.pty.onExit(({ exitCode, signal }) => {
-      this.log(`shell exited code=${exitCode} signal=${signal}`);
+      this.log(`pty exited code=${exitCode} signal=${signal}`);
       this._cleanup();
       if (!this.socket.destroyed) this.socket.end();
     });
 
     this.socket.on('end', () => {
-      // Half-close from a piped client (`echo cmd | nc host port`): ask the
-      // shell to exit so the session terminates instead of hanging at prompt.
-      if (!this.closed && this.pty) {
-        try { this.pty.write(this._exitCmd); } catch { /* ignore */ }
+      if (this.closed || !this.pty) return;
+      if (this._onSocketEnd === 'exit') {
+        try { this.pty.write(this._exitCommand); } catch { /* ignore */ }
+      } else if (this._onSocketEnd === 'kill') {
+        this._cleanup();
+        if (!this.socket.destroyed) this.socket.end();
       }
     });
 
@@ -90,30 +97,63 @@ class ShellSession {
     try { this.pty.resize(cols, rows); } catch { /* ignore */ }
   }
 
-  _resetIdle() {
-    const secs = this.config.shell.idleTimeoutSeconds || 0;
-    clearTimeout(this._idleTimer);
-    if (secs > 0) {
-      this._idleTimer = setTimeout(() => this._cleanup(true), secs * 1000);
-    }
-  }
-
-  _cleanup(fromIdle = false) {
+  _cleanup() {
     if (this.closed) return;
     this.closed = true;
-    clearTimeout(this._idleTimer);
     if (this.pty) {
       try { this.pty.kill(); } catch { /* ignore */ }
       this.pty = null;
     }
-    if (fromIdle && !this.socket.destroyed) this.socket.end();
   }
 
   kill() {
-    if (this.closed) return;
     this._cleanup();
     if (!this.socket.destroyed) this.socket.end();
   }
 }
 
-module.exports = { ShellSession };
+/**
+ * Shell mode: a PtyBridge running the configured login shell, with optional
+ * Windows codepage normalization and an idle timeout.
+ */
+class ShellSession extends PtyBridge {
+  constructor({ socket, filter, config, log }) {
+    super({
+      socket,
+      filter,
+      log,
+      opts: {
+        name: 'xterm-256color',
+        cols: config.shell.cols || DEFAULT_COLS,
+        rows: config.shell.rows || DEFAULT_ROWS,
+        env: { ...process.env, ...(config.shell.env || {}) },
+        cwd: config.shell.cwd || undefined,
+        onSocketEnd: 'exit',
+        onActivity: () => {},
+      },
+    });
+    this.config = config;
+    this._idleTimer = null;
+    this._onActivity = () => this._resetIdle();
+  }
+
+  start() {
+    const shell = resolveShell(this.config);
+    this.spawn(shell.file, shell.args);
+    if (process.platform === 'win32' && this.config.shell.codepageUtf8) {
+      this.pty.write('chcp 65001 >NUL\r\n');
+    }
+    this._resetIdle();
+    return this.pty;
+  }
+
+  _resetIdle() {
+    const secs = this.config.shell.idleTimeoutSeconds || 0;
+    clearTimeout(this._idleTimer);
+    if (secs > 0) {
+      this._idleTimer = setTimeout(() => this.kill(), secs * 1000);
+    }
+  }
+}
+
+module.exports = { PtyBridge, ShellSession };

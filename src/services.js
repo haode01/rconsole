@@ -126,7 +126,11 @@ class ServiceRegistry {
       onOutput(Buffer.from(this.helpText(), 'utf8'));
       return { code: 0 };
     }
+    return this.execResolved(r, onOutput);
+  }
 
+  /** Run an already-resolved service ({service, args}); resolves {code}. */
+  async execResolved(r, onOutput) {
     let spec;
     try {
       spec = this.buildSpawn(r.service, r.args);
@@ -134,7 +138,6 @@ class ServiceRegistry {
       onOutput(Buffer.from(`${err.message}\r\n`, 'utf8'));
       return { code: 1 };
     }
-
     const timeout = (r.service.timeoutSeconds != null ? r.service.timeoutSeconds : this.config.exec.timeoutSeconds) || 0;
     return spawnSpec(spec, timeout, this.config.exec.windowsHide, onOutput);
   }

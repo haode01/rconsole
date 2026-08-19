@@ -63,6 +63,7 @@ before(async () => {
   config.services = [
     { name: 'greet', command: 'echo hello-from-service', args: { min: 0, max: 0 } },
     { name: 'echo', command: 'echo {args}', args: { min: 1, max: 5 } },
+    { name: 'cat', command: ['cat'], args: { min: 0, max: 0 }, pty: true },
   ];
   config.banner = 'rconsole: test banner {hostname}\r\n';
 
@@ -115,6 +116,21 @@ test('service mode: builtin list shows services', async () => {
   const out = await oneShot(servicePort, 'list\n', false);
   assert.ok(out.includes('available services'));
   assert.ok(out.includes('greet'));
+});
+
+test('service mode: pty service is interactive (input is bridged)', async () => {
+  const socket = net.connect(servicePort, '127.0.0.1');
+  let out = '';
+  socket.on('data', (d) => { out += d.toString('utf8'); });
+  socket.on('error', () => {});
+  await new Promise((res) => socket.on('connect', res));
+
+  socket.write('cat\n');
+  // Give the pty a moment to spawn, then feed a line that cat should echo back.
+  await new Promise((r) => setTimeout(r, 300));
+  socket.write('hello-pty\n');
+  await waitFor(() => out.includes('hello-pty'));
+  socket.destroy();
 });
 
 test('auth: wrong token rejected, correct token proceeds', async () => {

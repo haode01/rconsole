@@ -121,13 +121,26 @@ Windows 下没有 `nc` 时，可用 PuTTY（选择 Telnet 协议）连 shell 端
 - `command` 为**数组**时不经 shell 直接 `spawn`（更安全，推荐敏感服务使用）：元素等于 `"{args}"` 会展开为参数列表，其它元素里的 `{args}` 子串被替换。
 - `args.min/max` 限制参数个数；`timeoutSeconds` 超时强杀；`hidden: true` 不在 `list` 里显示。
 - 内置伪服务 `list` / `help` / `?` 用于查看可用服务。
+- **`pty: true`**：让该服务运行在**真实终端（TTY）**里，连接变为交互式（适合 `ssh`、串口控制台等需要终端的前台程序）。默认 `false` 为一次性管道执行（无 TTY）。
 
 ```jsonc
 // 参数占位示例
-{ "name": "ssh-dev", "command": "ssh {args}", "args": { "min": 1, "max": 16 } }
+{ "name": "ssh-dev", "command": "ssh {args}", "args": { "min": 1, "max": 16 }, "pty": true }
 // 数组形式（不经 shell，避免注入）
 { "name": "ping1", "command": ["ping", "-n", "4", "{args}"], "args": { "min": 1, "max": 1 } }
 ```
+
+### 交互式服务 vs 一次性服务
+
+- **一次性服务**（默认，`pty: false`）：`echo 'systeminfo' | nc <host> 9002` 跑完即断开，返回 `[exit: N]`。**没有 TTY**，所以 `ssh` 会报 `Pseudo-terminal will not be allocated because stdin is not a terminal`。
+- **交互式服务**（`pty: true`）：连上后输入 `服务名 参数` 回车，之后这个连接就**全程粘在**该命令上，可交互输入（输密码、进设备命令行、tab 补全）。用法：
+
+  ```bash
+  telnet <host> 9002          # 或 nc <host> 9002 / PuTTY(Telnet)
+  ssh root@192.168.1.1        # 服务名 ssh + 参数，回车后进入交互式 ssh
+  ```
+
+  要退出交互式服务，直接结束该命令（如 ssh 里 `exit`）或关闭连接即可。
 
 ## 认证（可选，默认关闭）
 
