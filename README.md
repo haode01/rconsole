@@ -21,15 +21,36 @@
 
 ## 安装
 
-```bash
-cd rconsole
+### 1. 安装 Node.js（≥ 18）
+
+- **Windows**：到 [nodejs.org](https://nodejs.org/) 下载 LTS 版 `.msi` 安装包，双击一路 Next 即可（自带 npm）。装完新开一个 PowerShell 或 cmd 窗口。
+- **Linux**：用包管理器或 [nvm](https://github.com/nvm-sh/nvm) 安装，例如 Ubuntu/Debian：`sudo apt install -y nodejs npm`。
+
+### 2. 安装依赖
+
+把本项目目录放到目标机器（Windows 上例如 `C:\rconsole`），进入目录执行：
+
+```powershell
+cd C:\rconsole
 npm install
 ```
 
 `node-pty` 带有主流平台/Node 版本的预编译二进制（prebuild），通常无需编译。若你的 Node 版本没有匹配的预编译包，会退回到本地编译：
 
-- **Windows**：安装 [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/)（勾选 "Desktop development with C++"），再执行 `npm install`。
+- **Windows**：先安装 [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/)（勾选 "Desktop development with C++"），再执行 `npm install`。
 - **Linux**：需要 `make`、`g++`、`python3`。
+
+### 3. 启动
+
+```powershell
+# Windows：使用 Windows 预设服务配置
+node bin\rconsole.js --config config.windows.example.json
+
+# Linux：使用通用示例配置
+node bin/rconsole.js --config config.example.json
+```
+
+> Windows 下想让其常驻、开机自启，见下文「做成 Windows 服务」。
 
 ## 快速开始
 
@@ -39,7 +60,8 @@ node bin/rconsole.js
 
 # 或指定端口 / 配置文件
 node bin/rconsole.js --port 9000 --exec-port 9001 --service-port 9002
-node bin/rconsole.js --config ./config.example.json
+node bin/rconsole.js --config ./config.example.json          # 通用示例
+node bin/rconsole.js --config ./config.windows.example.json  # Windows 预设服务示例
 node bin/rconsole.js --shell powershell.exe   # 切换 Windows shell
 ```
 
@@ -65,7 +87,12 @@ Windows 下没有 `nc` 时，可用 PuTTY（选择 Telnet 协议）连 shell 端
 
 ## 配置
 
-见 [`config.example.json`](config.example.json)。要点：
+配置文件示例：
+
+- [`config.example.json`](config.example.json) — 通用示例（含少量示例服务）。
+- [`config.windows.example.json`](config.windows.example.json) — Windows 专用示例，内置一组常用 Windows 预设服务（`ipconfig`、`systeminfo`、`tasklist`、`ping`、`reboot`、`serial`、`ssh` 等）。
+
+要点：
 
 - `listeners`：可配置任意多个监听器，每个指定 `mode`（`shell` / `exec` / `service`）、`host`、`port`。
 - `shell`：`windows`/`linux` 分别指定 shell 可执行文件与参数；`codepageUtf8: true` 会在 Windows 上先执行 `chcp 65001` 统一 UTF-8。
@@ -143,7 +170,8 @@ rconsole/
 │   ├── services.js        # 预设服务调度
 │   └── server.js          # 三种监听模式 + 生命周期
 ├── test/                  # node:test 单测 + 集成测试
-└── config.example.json
+├── config.example.json            # 通用配置示例
+└── config.windows.example.json    # Windows 预设服务配置示例
 ```
 
 ## 测试

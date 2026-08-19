@@ -1,0 +1,114 @@
+{
+  "listeners": [
+    { "name": "shell",   "mode": "shell",   "host": "0.0.0.0", "port": 9000 },
+    { "name": "exec",    "mode": "exec",    "host": "0.0.0.0", "port": 9001 },
+    { "name": "service", "mode": "service", "host": "0.0.0.0", "port": 9002 }
+  ],
+  "shell": {
+    "windows": "cmd.exe",
+    "windowsArgs": [],
+    "linux": "bash",
+    "linuxArgs": [],
+    "env": {},
+    "cwd": null,
+    "cols": 80,
+    "rows": 24,
+    "codepageUtf8": true,
+    "idleTimeoutSeconds": 0,
+    "maxSessions": 0
+  },
+  "exec": {
+    "maxInputBytes": 65536,
+    "timeoutSeconds": 0,
+    "windowsHide": true
+  },
+  "services": [
+    {
+      "name": "ipconfig",
+      "description": "显示所有网络适配器的 IP 配置",
+      "command": "ipconfig /all",
+      "args": { "min": 0, "max": 0 },
+      "timeoutSeconds": 15
+    },
+    {
+      "name": "systeminfo",
+      "description": "显示系统信息（操作系统/硬件/补丁）",
+      "command": "systeminfo",
+      "args": { "min": 0, "max": 0 },
+      "timeoutSeconds": 30
+    },
+    {
+      "name": "tasklist",
+      "description": "列出当前所有进程",
+      "command": "tasklist",
+      "args": { "min": 0, "max": 0 },
+      "timeoutSeconds": 15
+    },
+    {
+      "name": "netstat",
+      "description": "显示网络连接与监听端口",
+      "command": "netstat -ano",
+      "args": { "min": 0, "max": 0 },
+      "timeoutSeconds": 15
+    },
+    {
+      "name": "ping",
+      "description": "ping 指定主机，用法: ping <主机>",
+      "command": "ping {args}",
+      "args": { "min": 1, "max": 1 },
+      "timeoutSeconds": 20
+    },
+    {
+      "name": "nslookup",
+      "description": "DNS 解析，用法: nslookup <域名>",
+      "command": "nslookup {args}",
+      "args": { "min": 1, "max": 2 },
+      "timeoutSeconds": 15
+    },
+    {
+      "name": "whoami",
+      "description": "显示当前登录用户与权限",
+      "command": "whoami /all",
+      "args": { "min": 0, "max": 0 },
+      "timeoutSeconds": 10
+    },
+    {
+      "name": "reboot",
+      "description": "重启这台 Windows 主机",
+      "command": "shutdown /r /t 0",
+      "args": { "min": 0, "max": 0 },
+      "timeoutSeconds": 5
+    },
+    {
+      "name": "shutdown",
+      "description": "关闭这台 Windows 主机",
+      "command": "shutdown /s /t 0",
+      "args": { "min": 0, "max": 0 },
+      "timeoutSeconds": 5
+    },
+    {
+      "name": "ssh",
+      "description": "SSH 到网络设备，用法: ssh <user@host>",
+      "command": "ssh {args}",
+      "args": { "min": 1, "max": 16 },
+      "timeoutSeconds": 0
+    },
+    {
+      "name": "serial",
+      "description": "打开 COM3 串口控制台（需安装 pyserial，波特率 115200）",
+      "command": "python -m serial.tools.miniterm COM3 115200",
+      "args": { "min": 0, "max": 0 },
+      "timeoutSeconds": 0
+    },
+    {
+      "name": "echo",
+      "description": "回显传入的参数（连通性自测）",
+      "command": "echo {args}",
+      "args": { "min": 0, "max": 16 },
+      "timeoutSeconds": 10
+    }
+  ],
+  "banner": "rconsole: connected to {hostname}\r\n",
+  "auth": { "enabled": false, "token": null },
+  "log": { "file": null, "level": "info" }
+}
