@@ -44,8 +44,8 @@ npm install
 ### 3. 启动
 
 ```powershell
-# Windows：使用 Windows 预设服务配置
-node bin\rconsole.js --config config.windows.example.json
+# Windows：使用 Windows 预设服务配置（Git Bash / PowerShell / cmd 均可用）
+node bin/rconsole.js --config config.windows.example.json
 
 # Linux：使用通用示例配置
 node bin/rconsole.js --config config.example.json
