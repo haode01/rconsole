@@ -31,7 +31,8 @@
 把本项目目录放到目标机器（Windows 上例如 `C:\rconsole`），进入目录执行：
 
 ```powershell
-cd C:\rconsole
+git clone https://github.com/haode01/rconsole.git
+cd rconsole
 npm install
 ```
 
